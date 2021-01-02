@@ -12,7 +12,8 @@ const getAttribute = (elem: HTMLElement, attributeName: string): any => {
   if(attributeName === 'class') {
     return elem.className === '' ? undefined : elem.className;
   } else {
-    return (elem as any)[attributeName];
+    const v = (elem as any)[attributeName];
+    return v === '' ? undefined : v;
   }
 };
 
@@ -107,23 +108,28 @@ const getOneElement = (xpath: string) => {
 }
 
 const props: UsePropertySetting[] = [
-  {
-    locked: true,
-    propertyType: 'TagName'
-  },
-  {
-    locked: false,
-    propertyType: 'ChildPosition'
-  },
+    {
+        locked: true,
+        propertyType: 'TagName'
+    },
+    {
+        locked: false,
+        propertyType: 'Attribute',
+        attributeName: 'id'
+    },
+    {
+        locked: false,
+        propertyType: 'Attribute',
+        attributeName: 'class'
+    },
+    {
+        locked: false,
+        propertyType: 'ChildPosition'
+    },
   // {
   //   locked: true,
   //   propertyType: 'InnerText'
   // },
-  {
-    locked: false,
-    propertyType: 'Attribute',
-    attributeName: 'class'
-  },
 ];
 
 let defaultBackgroundColor = new Map<HTMLElement, string>();
@@ -159,27 +165,48 @@ type AddedXPath = {xpaths: string[], element: Node}
 let pointedElement: EventTarget | undefined = undefined;
 let addedXPaths: AddedXPath[] = []
 
+//TODO: なぜか最後まで一意にならないときがある。（はてなブログトップページのタイトル取得時など）
+
 //xpathを後ろから見ていって、最初に共通で出現するやつ。
 //文字列だと最長共通部分列とかで解く
 //commonで該当要素数が最小と最小かつインデックスが最小を出力
 const getUnion = (addedXPaths: AddedXPath[]) : string | undefined => {
-  const results =
-    addedXPaths[0].xpaths
-      .map((xpath, index) => {
-        const xpathElems = [...enumrateXPath(document, xpath)];
-        return {
-          xpath: xpath,
-          index: index,
-          isCommon: addedXPaths.every(p => xpathElems.indexOf(p.element) !== -1),
-          targetNumber: xpathElems.length };
-      })
-      .filter(({isCommon }) => isCommon)
-      .sort((a, b) => a.targetNumber < b.targetNumber ? -1 : a.targetNumber > b.targetNumber ? 1 : a.index < b.index ? -1 : a.index > b.index ? 1 : 0);
+  const sortByTargetNumberAndIndex =
+    (a: {targetNumber:number, index:number}, b: {targetNumber:number, index:number}) =>
+      a.targetNumber < b.targetNumber ? -1 : a.targetNumber > b.targetNumber ? 1 : a.index < b.index ? -1 : a.index > b.index ? 1 : 0;
   
-  if(results.length === 0) {
+  const outerResults = 
+    addedXPaths.map((addedXPath, j) => {
+      const results =
+        addedXPath.xpaths
+          .map((xpath, index) => {
+            const xpathElems = [...enumrateXPath(document, xpath)];
+            return {
+              xpath: xpath,
+              index: index,
+              isCommon: addedXPaths.every(p => xpathElems.indexOf(p.element) !== -1),
+              targetNumber: xpathElems.length };
+          })
+          .filter(({isCommon }) => isCommon)
+          .sort(sortByTargetNumberAndIndex);
+      
+      if(results.length === 0) {
+        return undefined;
+      } else {
+        return {
+          xpath: results[0].xpath,
+          index: j,
+          targetNumber: results[0].targetNumber
+        };
+      }
+    })
+    .filter(s => s !== undefined)
+    .sort(sortByTargetNumberAndIndex);
+  
+  if(outerResults.length === 0) {
     return undefined;
   } else {
-    return results[0].xpath;
+    return outerResults[0].xpath;
   }
 };
 
