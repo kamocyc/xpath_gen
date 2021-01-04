@@ -40,11 +40,13 @@ const toXPath = (elem: HTMLElement, props: UseProperty[]): string => {
     containsType(props, 'TagName') ?
       elem.tagName.toLowerCase() :
       '*';
-  
+    
   let xpathComponents = [];
+  
   if(containsType(props, 'ChildPosition')) {
-    xpathComponents.push(getChildPosition(elem).toString());
+    xpathComponents.push(`position()='${getChildPosition(elem).toString()}'`);
   }
+  
   if(containsType(props, 'InnerText')) {
     xpathComponents.push(`text()='${escapeXPath(elem.innerText)}'`);
   }
@@ -136,11 +138,13 @@ let defaultBackgroundColor = new Map<HTMLElement, string>();
 
 const setHighlight = (elems: HTMLElement[], color: string): void => {
   elems.forEach(elem => {
-    if(!defaultBackgroundColor.has(elem)) {
-      defaultBackgroundColor.set(elem, elem.style.backgroundColor);
+    if(elem) {
+      if(!defaultBackgroundColor.has(elem)) {
+        defaultBackgroundColor.set(elem, elem.style.backgroundColor);
+      }
+      
+      elem.style.backgroundColor = color;
     }
-    
-    elem.style.backgroundColor = color;
   }
   );
 };
@@ -156,7 +160,9 @@ function* enumrateXPath(documentOrHTMLElement: Document | HTMLElement, xpath: st
 
 const resetHightlight = (elems: HTMLElement[]) => {
   elems.forEach((elm) => {
-    elm.style.backgroundColor = defaultBackgroundColor.get(elm);
+    if(elm) {
+      elm.style.backgroundColor = defaultBackgroundColor.get(elm);
+    }
   });
 };
 
@@ -167,6 +173,21 @@ let addedXPaths: AddedXPath[] = []
 
 //TODO: なぜか最後まで一意にならないときがある。（はてなブログトップページのタイトル取得時など）
 
+const splitClass = (classText: string): string[] => classText.split(/(?:\s|\n|\r|\t)+/g)
+const toSetOnlyUniqueElements = <T>(elements: T[]): Set<T> => {
+  let s = new Set<T>();
+  elements.forEach(e => {
+    if(!s.has(e)) s.add(e);
+  })
+  return s;
+}
+
+const getIntersection = <T>(sets: Set<T>[]): Set<T> => {
+  if(sets.length === 0) throw new Error("array should not be 0 length");
+  
+  return new Set([...sets[0]].filter(e => sets.slice(1).every(s => s.has(e))));
+}
+
 //xpathを後ろから見ていって、最初に共通で出現するやつ。
 //文字列だと最長共通部分列とかで解く
 //commonで該当要素数が最小と最小かつインデックスが最小を出力
@@ -176,7 +197,38 @@ const getUnion = (addedXPaths: AddedXPath[]) : string | undefined => {
       a.targetNumber < b.targetNumber ? -1 : a.targetNumber > b.targetNumber ? 1 : a.index < b.index ? -1 : a.index > b.index ? 1 : 0;
   
   const outerResults = 
-    addedXPaths.map((addedXPath, j) => {
+    addedXPaths.map((addedXPath_, j) => {
+      //追加の部分にclassがあった場合に置換
+      //今まで出現していないclass
+      let class_map: {source: string, target: string}[] = [];
+      
+      const addedXPath = {
+        xpaths:
+          addedXPath_.xpaths.map(path => {
+            for(const map of class_map) {
+              path = path.replace(map.source, map.target);
+            }
+            
+            // assert match shuld not more than 1 
+            const found = path.match(/@class='([^']*)'/);
+            if(found !== null) {
+              const xpathWithoutClass = path.replace(found[0], '(1=1)');
+              const classSets = 
+                [...enumrateXPath(document, xpathWithoutClass)].filter(elem => 
+                  addedXPaths.some(p => elem === p.element /*elem.contains(p.element)*/)
+                ).map(elem => new Set(splitClass((elem as any).className as string)));
+              
+              const inter = getIntersection(classSets);
+              if(inter.size !== 0) {
+                const r = [...inter].map(s => `contains(@class,'${s}')`).join(" and ");
+                path = path.replace(found[0], r);
+              }
+            }
+            
+            return path;
+          })
+      };
+        
       const results =
         addedXPath.xpaths
           .map((xpath, index) => {

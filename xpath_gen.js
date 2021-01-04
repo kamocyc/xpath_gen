@@ -24,7 +24,7 @@ const toXPath = (elem, props) => {
         '*';
     let xpathComponents = [];
     if (containsType(props, 'ChildPosition')) {
-        xpathComponents.push(getChildPosition(elem).toString());
+        xpathComponents.push(`position()='${getChildPosition(elem).toString()}'`);
     }
     if (containsType(props, 'InnerText')) {
         xpathComponents.push(`text()='${escapeXPath(elem.innerText)}'`);
@@ -99,10 +99,12 @@ const props = [
 let defaultBackgroundColor = new Map();
 const setHighlight = (elems, color) => {
     elems.forEach(elem => {
-        if (!defaultBackgroundColor.has(elem)) {
-            defaultBackgroundColor.set(elem, elem.style.backgroundColor);
+        if (elem) {
+            if (!defaultBackgroundColor.has(elem)) {
+                defaultBackgroundColor.set(elem, elem.style.backgroundColor);
+            }
+            elem.style.backgroundColor = color;
         }
-        elem.style.backgroundColor = color;
     });
 };
 function* enumrateXPath(documentOrHTMLElement, xpath) {
@@ -115,14 +117,49 @@ function* enumrateXPath(documentOrHTMLElement, xpath) {
 ;
 const resetHightlight = (elems) => {
     elems.forEach((elm) => {
-        elm.style.backgroundColor = defaultBackgroundColor.get(elm);
+        if (elm) {
+            elm.style.backgroundColor = defaultBackgroundColor.get(elm);
+        }
     });
 };
 let pointedElement = undefined;
 let addedXPaths = [];
+const splitClass = (classText) => classText.split(/(?:\s|\n|\r|\t)+/g);
+const toSetOnlyUniqueElements = (elements) => {
+    let s = new Set();
+    elements.forEach(e => {
+        if (!s.has(e))
+            s.add(e);
+    });
+    return s;
+};
+const getIntersection = (sets) => {
+    if (sets.length === 0)
+        throw new Error("array should not be 0 length");
+    return new Set([...sets[0]].filter(e => sets.slice(1).every(s => s.has(e))));
+};
 const getUnion = (addedXPaths) => {
     const sortByTargetNumberAndIndex = (a, b) => a.targetNumber < b.targetNumber ? -1 : a.targetNumber > b.targetNumber ? 1 : a.index < b.index ? -1 : a.index > b.index ? 1 : 0;
-    const outerResults = addedXPaths.map((addedXPath, j) => {
+    const outerResults = addedXPaths.map((addedXPath_, j) => {
+        let class_map = [];
+        const addedXPath = {
+            xpaths: addedXPath_.xpaths.map(path => {
+                for (const map of class_map) {
+                    path = path.replace(map.source, map.target);
+                }
+                const found = path.match(/@class='([^']*)'/);
+                if (found !== null) {
+                    const xpathWithoutClass = path.replace(found[0], '(1=1)');
+                    const classSets = [...enumrateXPath(document, xpathWithoutClass)].filter(elem => addedXPaths.some(p => elem === p.element)).map(elem => new Set(splitClass(elem.className)));
+                    const inter = getIntersection(classSets);
+                    if (inter.size !== 0) {
+                        const r = [...inter].map(s => `contains(@class,'${s}')`).join(" and ");
+                        path = path.replace(found[0], r);
+                    }
+                }
+                return path;
+            })
+        };
         const results = addedXPath.xpaths
             .map((xpath, index) => {
             const xpathElems = [...enumrateXPath(document, xpath)];
