@@ -2,6 +2,8 @@
 
 要素をマウスで複数選択することで、それらの要素すべてを含むxpathを生成する。
 
+![](screen2.gif)
+
 ## 使い方
 * コンパイルした xpath_gen.js をChromeのdeveloper toolのConsoleに貼り付ける
 * マウスを要素の上に置いて、Aキーを押して選択（背景色が赤に変化）
