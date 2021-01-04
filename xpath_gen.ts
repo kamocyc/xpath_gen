@@ -188,6 +188,11 @@ const getIntersection = <T>(sets: Set<T>[]): Set<T> => {
   return new Set([...sets[0]].filter(e => sets.slice(1).every(s => s.has(e))));
 }
 
+const parentTimes = (node: Node, times: number) => {
+  for(let i=0; i<times; i++) node = node.parentElement;
+  return node;
+}
+
 //xpathを後ろから見ていって、最初に共通で出現するやつ。
 //文字列だと最長共通部分列とかで解く
 //commonで該当要素数が最小と最小かつインデックスが最小を出力
@@ -210,13 +215,15 @@ const getUnion = (addedXPaths: AddedXPath[]) : string | undefined => {
             }
             
             // assert match shuld not more than 1 
-            const found = path.match(/@class='([^']*)'/);
-            if(found !== null) {
+            const founds = [...path.matchAll(/@class='([^']*)'/g)];
+            if(founds.length > 0) {
+              const found = founds[0];
+              const times = (path.substr(found.index).match(/\//g) || []).length;
               const xpathWithoutClass = path.replace(found[0], '(1=1)');
               const classSets = 
                 [...enumrateXPath(document, xpathWithoutClass)].filter(elem => 
-                  addedXPaths.some(p => elem === p.element /*elem.contains(p.element)*/)
-                ).map(elem => new Set(splitClass((elem as any).className as string)));
+                  addedXPaths.some(p => /* elem === p.element */elem.contains(p.element))
+                ).map(elem => new Set(splitClass((parentTimes(elem, times) as any).className as string).filter(s => s !== '')));
               
               const inter = getIntersection(classSets);
               if(inter.size !== 0) {
@@ -287,6 +294,7 @@ document.onkeydown = (e) => {
       if(union !== undefined && addedXPaths.length >= 2) {
         setHighlight([...enumrateXPath(document, union)] as any, 'blue');
         lastHighlighted = [...enumrateXPath(document, union)] as any;
+        console.log({matched: lastHighlighted.length});
         
         const text = lastHighlighted.map(e => e.innerText).join('\n');
         navigator.clipboard.writeText(text).then(e => {

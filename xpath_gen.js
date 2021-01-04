@@ -138,6 +138,11 @@ const getIntersection = (sets) => {
         throw new Error("array should not be 0 length");
     return new Set([...sets[0]].filter(e => sets.slice(1).every(s => s.has(e))));
 };
+const parentTimes = (node, times) => {
+    for (let i = 0; i < times; i++)
+        node = node.parentElement;
+    return node;
+};
 const getUnion = (addedXPaths) => {
     const sortByTargetNumberAndIndex = (a, b) => a.targetNumber < b.targetNumber ? -1 : a.targetNumber > b.targetNumber ? 1 : a.index < b.index ? -1 : a.index > b.index ? 1 : 0;
     const outerResults = addedXPaths.map((addedXPath_, j) => {
@@ -147,10 +152,12 @@ const getUnion = (addedXPaths) => {
                 for (const map of class_map) {
                     path = path.replace(map.source, map.target);
                 }
-                const found = path.match(/@class='([^']*)'/);
-                if (found !== null) {
+                const founds = [...path.matchAll(/@class='([^']*)'/g)];
+                if (founds.length > 0) {
+                    const found = founds[0];
+                    const times = (path.substr(found.index).match(/\//g) || []).length;
                     const xpathWithoutClass = path.replace(found[0], '(1=1)');
-                    const classSets = [...enumrateXPath(document, xpathWithoutClass)].filter(elem => addedXPaths.some(p => elem === p.element)).map(elem => new Set(splitClass(elem.className)));
+                    const classSets = [...enumrateXPath(document, xpathWithoutClass)].filter(elem => addedXPaths.some(p => elem.contains(p.element))).map(elem => new Set(splitClass(parentTimes(elem, times).className).filter(s => s !== '')));
                     const inter = getIntersection(classSets);
                     if (inter.size !== 0) {
                         const r = [...inter].map(s => `contains(@class,'${s}')`).join(" and ");
@@ -213,6 +220,7 @@ document.onkeydown = (e) => {
             if (union !== undefined && addedXPaths.length >= 2) {
                 setHighlight([...enumrateXPath(document, union)], 'blue');
                 lastHighlighted = [...enumrateXPath(document, union)];
+                console.log({ matched: lastHighlighted.length });
                 const text = lastHighlighted.map(e => e.innerText).join('\n');
                 navigator.clipboard.writeText(text).then(e => {
                     console.log('Copied!!');
